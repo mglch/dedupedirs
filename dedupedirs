@@ -1,0 +1,134 @@
+#!/bin/sh
+
+set -eu
+
+getopt_version=0
+getopt -T || getopt_version=$?
+[ $getopt_version -eq 4 ] || { echo "$0: need GNU getopt" >&2; exit 1; }
+
+tmpfile="$(mktemp /tmp/dedupedirs.XXXXX)"
+
+print_usage()
+{
+    echo "Usage:"
+    echo "    $0 [-n|--dry-run] [-v|--verbose] DIR1 DIR2 [...]"
+}
+
+dry_run=0
+help=0
+verbose=0
+
+GETOPT_TEMP=$(getopt -n "$0" -o nhv -l dry-run,help,verbose -- "$@")
+eval set -- "$GETOPT_TEMP"
+unset GETOPT_TEMP
+
+while true
+do
+    case "$1" in
+        -n|--dry-run)
+            dry_run=1
+            shift
+            continue
+            ;;
+        -h|--help)
+            help=1
+            shift
+            continue
+            ;;
+        -v|--verbose)
+            verbose=1
+            shift
+            continue
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Internal error." >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ $help -eq 1 ]
+then
+    print_usage
+    exit 0
+fi
+
+if [ $# -lt 2 ]
+then
+    print_usage
+    exit 1
+fi
+
+get_size()
+{
+    stat -c %s -- "$1"
+}
+
+get_mountpoint()
+{
+    stat -c %m -- "$1"
+}
+
+get_inode()
+{
+    stat -c %i -- "$1"
+}
+
+this_dir="$1"
+( cd -- "$this_dir" && find . -type f -print ) | while read path
+do
+    path="${path#\./}"
+    this_file="$this_dir/$path"
+    size="$(get_size "$this_file")"
+    mountpoint="$(get_mountpoint "$this_file")"
+    inode="$(get_inode "$this_file")"
+
+    for other_dir in "$@"
+    do
+        if [ "$other_dir" = "$this_dir" ]
+        then
+            continue
+        fi
+
+        other_file="$other_dir/$path"
+
+        # Both paths must be files.
+        [ -f "$other_file" ] || continue
+
+        # Both paths must be on the same filesystem.
+        if [ "$mountpoint" != "$(get_mountpoint "$other_file")" ]
+        then
+            echo "Warning: $other_file is on a different filesystem, hardlinks will not be possible." >&2
+            continue
+        fi
+
+        # Both paths must be the same size.
+        [ $size -eq $(get_size "$other_file") ] || continue
+
+        # Both paths must have equal contents.
+        cmp -s -- "$this_file" "$other_file" || continue
+
+        # Files must not be hardlinked yet.
+        [ $inode -ne $(get_inode "$other_file") ] || continue
+
+        if [ $verbose -eq 1 ]
+        then
+            printf -- '%s -> %s\n' "$other_file" "$this_file"
+        fi
+
+        if [ $dry_run -eq 0 ]
+        then
+            chmod --reference="$(dirname -- "$other_file")" -- "$tmpfile"
+            chmod u+w -- "$(dirname -- "$other_file")"
+            rm -- "$other_file"
+            ln -- "$this_file" "$other_file"
+            chmod --reference="$tmpfile" -- "$(dirname -- "$other_file")"
+        fi
+    done
+done
+
+rm -- "$tmpfile"
