@@ -106,14 +106,14 @@ do
             continue
         fi
 
+        # Files must not be hardlinked yet.
+        [ "$inode" -ne "$(get_inode "$other_file")" ] || continue
+
         # Both paths must be the same size.
         [ "$size" -eq "$(get_size "$other_file")" ] || continue
 
         # Both paths must have equal contents.
         cmp -s -- "$this_file" "$other_file" || continue
-
-        # Files must not be hardlinked yet.
-        [ "$inode" -ne "$(get_inode "$other_file")" ] || continue
 
         if [ "$verbose" -eq 1 ]
         then
