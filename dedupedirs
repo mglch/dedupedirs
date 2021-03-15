@@ -4,7 +4,7 @@ set -eu
 
 getopt_version=0
 getopt -T || getopt_version=$?
-[ $getopt_version -eq 4 ] || { echo "$0: need GNU getopt" >&2; exit 1; }
+[ "$getopt_version" -eq 4 ] || { echo "$0: need GNU getopt" >&2; exit 1; }
 
 tmpfile="$(mktemp /tmp/dedupedirs.XXXXX)"
 
@@ -51,7 +51,7 @@ do
     esac
 done
 
-if [ $help -eq 1 ]
+if [ "$help" -eq 1 ]
 then
     print_usage
     exit 0
@@ -79,7 +79,7 @@ get_inode()
 }
 
 this_dir="$1"
-( cd -- "$this_dir" && find . -type f -print ) | while read path
+( cd -- "$this_dir" && find . -type f -print ) | while read -r path
 do
     path="${path#\./}"
     this_file="$this_dir/$path"
@@ -107,20 +107,20 @@ do
         fi
 
         # Both paths must be the same size.
-        [ $size -eq $(get_size "$other_file") ] || continue
+        [ "$size" -eq "$(get_size "$other_file")" ] || continue
 
         # Both paths must have equal contents.
         cmp -s -- "$this_file" "$other_file" || continue
 
         # Files must not be hardlinked yet.
-        [ $inode -ne $(get_inode "$other_file") ] || continue
+        [ "$inode" -ne "$(get_inode "$other_file")" ] || continue
 
-        if [ $verbose -eq 1 ]
+        if [ "$verbose" -eq 1 ]
         then
             printf -- '%s -> %s\n' "$other_file" "$this_file"
         fi
 
-        if [ $dry_run -eq 0 ]
+        if [ "$dry_run" -eq 0 ]
         then
             chmod --reference="$(dirname -- "$other_file")" -- "$tmpfile"
             chmod u+w -- "$(dirname -- "$other_file")"
